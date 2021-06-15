@@ -12,29 +12,32 @@ PROCESSED = $(HUB)data-processed/
 
 # current date, for git tags
 TODAY_DATE = $(shell date +'%Y-%m-%d')
+YESTERDAY_DATE = $(shell date -v-1d +'%Y-%m-%d')
 
 # Define the full make, making plots and
 all: comparative_plots incvscum ensemble pull data covidEnsembles
 
-# Switch to master covidEnsembles branch, pull, and reinstall
-covidEnsembles:
-	git switch master
-	git pull
-	cd ../../../../
-	R CMD INSTALL covidEnsembles
+# Get the latest forecast files from the hub repository in order to make tag
+pull_for_tag:
+	git -C $(HUB) pull origin master
 
+git_tag: pull_for_tag
+	git -C $(HUB) tag -a $(TODAY_DATE)-COVIDhub-ensemble -m "$(TODAY_DATE)-COVIDhub-ensemble build inputs"
+	git -C $(HUB) push origin $(TODAY_DATE)-COVIDhub-ensemble
 
-# Get the latest forecast files from the hub repository
+# Pull for ensemble
 pull:
-	git -C $(HUB) fetch --all --tags
-	git -C $(HUB) checkout tags/$(TODAY_DATE)-COVIDhub-ensemble
+	git -C $(HUB) fetch --all --tags && \
+	git -C $(HUB) checkout tags/$(TODAY_DATE)-COVIDhub-ensemble || \
+	git -C $(HUB) checkout tags/$(YESTERDAY_DATE)-COVIDhub-ensemble
+
+# Switch to master covidEnsembles branch, pull, and reinstall
+covidEnsembles: pull
+	git switch master && git pull && cd ../../../../ && R CMD INSTALL covidEnsembles
 
 # Update and reinstall covidData package
-data:
-	cd ../../../../covidData/code/data-processing
-	git switch master
-	git pull
-	make all
+data: pull
+	cd ../../../../covidData/code/data-processing && git switch master && git pull && make all
 
 # Plot submissions from component models
 plots: pull data covidEnsembles
@@ -50,9 +53,7 @@ ensemble: pull data covidEnsembles
 incvscum: pull data covidEnsembles
 	Rscript inc_vs_cum.R
 
-comparative_plots: ensemble
+comparative_plots: ensemble pull
 	Rscript plot_median_vs_trained_ensemble_forecasts.R
 
-git_tag: pull
-	git -C $(HUB) tag -a $(TODAY_DATE)-COVIDhub-ensemble -m "$(TODAY_DATE)-COVIDhub-ensemble build inputs"
-	git -C $(HUB) push origin $(TODAY_DATE)-COVIDhub-ensemble
+
